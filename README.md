@@ -1,0 +1,1 @@
+This application is designed to be used with a PROLOGIX GPIB-USB adaptor
