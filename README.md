@@ -38,7 +38,7 @@ The application offers a robust set of functionalities designed for efficient in
 
   * **Write to Display** (`wrt 723 D2{text}`): Sends custom text to the multimeter's display.
 
-  * **Read IDN**: Reads the instrument's identification string.
+  * **Read IDN (WIP)**: Reads the instrument's identification string.
   
   #### Power Supply (WIP)
 
@@ -86,7 +86,7 @@ The application offers a robust set of functionalities designed for efficient in
 
 ### 3. Data Visualization (Plotting)
 
-* **Real-time Plotting (WIP):** Integrates the powerful Matplotlib library to display live measurement data over time.
+* **Real-time Plotting (WIP):** Integrates the Matplotlib library to display live measurement data over time.
 
 * **Supported Plotting Modes (In Progress):** Automatically plots data received for key measurements from the **HP 3478A Multimeter**, including:
 
@@ -108,23 +108,24 @@ The application offers a robust set of functionalities designed for efficient in
 
 * **Intuitive Layout:** The application features a well-organized and user-friendly interface with distinct sections for instrument controls, serial communication, and data logs/plots.
 
-* **Configuration Management (Simulated):** "Save Config" and "Load Config" buttons are present, currently offering simulated functionality for future implementation.
+* **Configuration Management (WIP):** "Save Config" and "Load Config" buttons are present, currently offering simulated functionality for future implementation.
 
 ## Features To Be Added
 
+* **Multiple Instrument Functionality:** Support simultaneous data logging from multiple instruments, including both district models and multiple units of the same model.
+
 * **Actual Configuration Saving/Loading:** Implement robust functionality to save and load instrument configurations and application settings to persistent files (e.g., JSON, YAML).
 
-* **Data Export:** Add options to easily export received raw data and generated plot data to common formats like CSV, enabling further analysis.
+* **Data Export:** Add options to easily export received raw data and generated plot data to common formats like CSV, for further analysis.
 
 * **Advanced Plotting Features:**
 
   * Support for plotting data from multiple measurement channels simultaneously on the same graph.
 
-  * Customizable plot aesthetics, including colors, line styles, and markers.
+  * Customizable plots, including colors, line styles, and markers for data from several instruments.
 
   * Enhanced interactive tools for zooming, panning, and detailed data inspection beyond the default Matplotlib toolbar.
 
-  * Ability to save plots as high-resolution image files.
 
 * **Input Validation:** Implement more robust validation for all user inputs, ensuring data integrity and preventing common errors (e.g., ensuring numeric values where expected).
 
