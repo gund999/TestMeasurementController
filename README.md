@@ -2,41 +2,21 @@
 
 ![Fully Built Robot](Images/GPIB_IC_GUI.png)
 
-This project provides a graphical user interface (GUI) built with Python's Tkinter library for controlling various laboratory instruments, including those that use GPIB communication via a Prologix USB-to-GPIB adapter connected over a serial (COM) port. It allows users to select instruments, send specific commands, and visualize real-time measurement data.
+This project provides a graphical user interface (GUI) built with Python's Tkinter library for controlling various laboratory instruments, including those that use GPIB communication via a Prologix USB-to-GPIB adapter connected over a serial (COM) port. It allows users to select a variety of instruments, send specific commands, and log measurement data. 
 
 ## Current Features
 
-The application currently offers a robust set of functionalities designed for efficient instrument interaction and data monitoring:
+The application offers a robust set of functionalities designed for efficient instrument interaction and data monitoring:
 
 ### 1. Instrument Control
 
 * **Instrument Selection:** Easily choose from a predefined list of supported instruments.
 
-* **Dynamic Subcommands:** The available subcommands and their associated parameters automatically update based on the instrument currently selected, streamlining command generation.
+* **Subcommands:** The available subcommands and their associated parameters update based on the selected instrument.
 
 * **Supported Instruments and Commands:**
 
-  #### Power Supply
-
-  * **Set Voltage**
-
-  * **Set Current Limit**
-
-  * **Output ON/OFF**
-
-  * **Measure Output**
-
-  #### Chroma DC Load
-
-  * **Set Current**
-
-  * **Set Voltage**
-
-  * **Load ON/OFF**
-
-  * **Measure Input**
-
-  #### HP 3478A Multimeter
+  #### HP 3478A Multimeter (In Progress)
 
   * **HOME Command** (`H0`): Resets the multimeter to default settings.
 
@@ -59,16 +39,36 @@ The application currently offers a robust set of functionalities designed for ef
   * **Write to Display** (`wrt 723 D2{text}`): Sends custom text to the multimeter's display.
 
   * **Read IDN**: Reads the instrument's identification string.
+  
+  #### Power Supply (WIP)
+
+  * **Set Voltage**
+
+  * **Set Current Limit**
+
+  * **Output ON/OFF**
+
+  * **Measure Output**
+
+  #### Chroma DC Load (WIP)
+
+  * **Set Current**
+
+  * **Set Voltage**
+
+  * **Load ON/OFF**
+
+  * **Measure Input**
 
 ### 2. Serial Communication
 
 * **COM Port Management:**
 
-  * Automatically detects and lists all available COM ports on your system.
+  * Detects and lists all available COM ports on your system.
 
-  * Allows seamless selection of a COM port and configuration of the baud rate.
+  * Displays COM port availability and offers customizable configuration of the baud rate.
 
-  * Provides clear **Connect** and **Disconnect** functionality with a visual status indicator (red/green light).
+  * Includes a visual status indicator (red/green light).
 
 * **Command Sending:**
 
@@ -78,17 +78,17 @@ The application currently offers a robust set of functionalities designed for ef
 
 * **Real-time Logging:**
 
-  * A "Debug Log" provides detailed application events and records all sent commands.
+  * A "Debug Log" captures detailed application events and sent commands in real-time. It also provides an interface for testing ASCII input via the COM port.
 
-  * A "Receive Log" displays incoming data from the serial port.
+  * A "Receive Log" displays incoming data from the serial port as an output.
 
-  * Both logs feature intelligent **auto-scrolling** that automatically pauses when you manually scroll up, allowing uninterrupted review of historical data.
+  * Both logs feature intelligent **auto-scrolling** that automatically pauses when you manually scroll up, allowing uninterrupted review of historical data while handling new packets.
 
 ### 3. Data Visualization (Plotting)
 
-* **Real-time Plotting:** Integrates the powerful Matplotlib library to display live measurement data over time.
+* **Real-time Plotting (WIP):** Integrates the powerful Matplotlib library to display live measurement data over time.
 
-* **Supported Plotting Modes:** Automatically plots data received for key measurements from the **HP 3478A Multimeter**, including:
+* **Supported Plotting Modes (In Progress):** Automatically plots data received for key measurements from the **HP 3478A Multimeter**, including:
 
   * "Measure DC Voltage"
 
@@ -98,23 +98,19 @@ The application currently offers a robust set of functionalities designed for ef
 
   * "Measure AC Current"
 
-* **Dynamic Labels:** The Y-axis label and plot title dynamically update to reflect the specific type of measurement being visualized.
+* **Dynamic Labels (In Progress):** The Y-axis label and plot title dynamically update to reflect the specific type of measurement being visualized.
 
-* **Dynamic Axis Scaling:** Plot axes automatically adjust to accommodate incoming data ranges, ensuring optimal visibility.
+* **Dynamic Axis Scaling (In Progress):** Plot axes automatically adjust to accommodate incoming data ranges, ensuring optimal visibility.
 
-* **Clear Plot:** A convenient button to instantly clear all plotted data and reset the graph for a new session.
+* **Clear Plot (In Progress):** A convenient button to instantly clear all plotted data and reset the graph for a new session.
 
 ### 4. User Interface (GUI)
 
 * **Intuitive Layout:** The application features a well-organized and user-friendly interface with distinct sections for instrument controls, serial communication, and data logs/plots.
 
-* **Responsive Design:** The GUI layout seamlessly adapts to window resizing, maintaining usability across different screen dimensions.
-
-* **Placeholder Text:** All input fields include helpful grey placeholder text that vanishes upon focus and reappears if the field is left empty, guiding user input.
-
 * **Configuration Management (Simulated):** "Save Config" and "Load Config" buttons are present, currently offering simulated functionality for future implementation.
 
-## To Be Added Features (Future Enhancements)
+## Features To Be Added
 
 * **Actual Configuration Saving/Loading:** Implement robust functionality to save and load instrument configurations and application settings to persistent files (e.g., JSON, YAML).
 
@@ -134,12 +130,8 @@ The application currently offers a robust set of functionalities designed for ef
 
 * **Automated Measurement Sequences:** Develop a powerful feature to define, save, and execute automated sequences of commands and measurements, ideal for repetitive testing.
 
-* **Error Handling Improvements:** Enhance error reporting with more specific details and provide clearer user guidance for serial communication issues and invalid instrument responses.
+* **Error Handling Improvements:** Expand error reporting with more specific details and more robustness to the addition of other instruments and subcommands.
 
 * **GPIB Integration:** Explore and integrate actual GPIB communication capabilities alongside the existing serial interface, if a physical GPIB hardware is available.
 
-* **Unit Conversion/Display:** Automatically handle and display appropriate units for measurements based on the selected instrument and subcommand, improving data readability.
-
-* **User Preferences:** Allow users to save and load GUI preferences such as window size, log display settings, and default COM port settings.
-
-* **Additional Instrument Support:** Continuously expand the `instrument_data` dictionary to include a wider range of common laboratory instruments and their commands.
+* **User Preferences (WIP):** Allow users to save and load application preferences such as data logging settings, display settings, and default COM port settings.
