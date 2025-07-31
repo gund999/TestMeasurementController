@@ -274,14 +274,23 @@ class GPIBApp:
         self.serial_comm_frame.grid_columnconfigure(0, weight=1) # Make port combobox expand
 
         # Serial Port Selection
-        ttk.Label(self.serial_comm_frame, text="COM Port:").pack(anchor="w", pady=(0, 2))
+        serial_port_selection_frame = ttk.Frame(self.serial_comm_frame)
+        serial_port_selection_frame.pack(fill=tk.X, pady=(0, 5))
+        serial_port_selection_frame.grid_columnconfigure(0, weight=1) # Combobox takes most space
+
+        ttk.Label(serial_port_selection_frame, text="COM Port:").grid(row=0, column=0, sticky="w", pady=(0, 2))
         self.available_ports = self._list_serial_ports()
         self.selected_com_port = tk.StringVar(self.master)
         self.selected_com_port.set(self.available_ports[0] if self.available_ports else "")
-        self.com_port_combobox = ttk.Combobox(self.serial_comm_frame, textvariable=self.selected_com_port,
+        self.com_port_combobox = ttk.Combobox(serial_port_selection_frame, textvariable=self.selected_com_port,
                                                values=self.available_ports, state="readonly")
-        self.com_port_combobox.pack(fill=tk.X, pady=(0, 5))
+        self.com_port_combobox.grid(row=1, column=0, sticky="ew", padx=(0, 5))
         self.com_port_combobox.bind("<<ComboboxSelected>>", self._add_debug_log_com_selection)
+
+        # Refresh COM Ports Button
+        self.refresh_com_button = ttk.Button(serial_port_selection_frame, text="Refresh", command=self._refresh_com_ports)
+        self.refresh_com_button.grid(row=1, column=1, sticky="e")
+
 
         # Baud Rate Entry
         ttk.Label(self.serial_comm_frame, text="Baud Rate:").pack(anchor="w", pady=(0, 2))
@@ -464,6 +473,19 @@ class GPIBApp:
         ports = serial.tools.list_ports.comports()
         # Return a list of port names, e.g., ['COM1', 'COM2', '/dev/ttyUSB0']
         return [port.device for port in ports] if ports else ["No COM Ports Found"]
+
+    def _refresh_com_ports(self):
+        """Refreshes the list of available COM ports."""
+        self._add_debug_log("Refreshing COM ports...")
+        current_ports = self._list_serial_ports()
+        self.com_port_combobox['values'] = current_ports
+        if current_ports:
+            # Try to keep the current selection if it's still available
+            if self.selected_com_port.get() not in current_ports:
+                self.selected_com_port.set(current_ports[0])
+        else:
+            self.selected_com_port.set("No COM Ports Found")
+        self._add_debug_log(f"Available COM ports updated: {current_ports}")
 
     def _add_debug_log_com_selection(self, event):
         """Logs when a COM port is selected."""

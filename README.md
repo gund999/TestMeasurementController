@@ -1,10 +1,8 @@
-# GPIB Instrument Control GUI (Tkinter)
+# USB-GPIB Instrument Controller
 
-<!-- Placeholder for a project image. Replace with an actual screenshot or diagram of your GUI. -->
+![Fully Built Robot](Images/GPIB_IC_GUI.png)
 
-<!--  -->
-
-This project provides a graphical user interface (GUI) built with Python's Tkinter library for controlling various laboratory instruments via serial (COM) port communication. It allows users to select instruments, send specific commands, and visualize real-time measurement data.
+This project provides a graphical user interface (GUI) built with Python's Tkinter library for controlling various laboratory instruments, including those that use GPIB communication via a Prologix USB-to-GPIB adapter connected over a serial (COM) port. It allows users to select instruments, send specific commands, and visualize real-time measurement data.
 
 ## Current Features
 
