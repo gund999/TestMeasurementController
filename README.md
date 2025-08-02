@@ -133,6 +133,9 @@ The application offers a robust set of functionalities designed for efficient in
 
 * **Clear Plot (In Progress):** A convenient button to instantly clear all plotted data and reset the graph for a new session.
 
+* **Data Export:** Add options to easily export received raw data and generated plot data to common formats like CSV, for further analysis.
+
+
 ### 4. User Interface (GUI)
 
 * **Intuitive Layout:** The application features a well-organized and user-friendly interface with distinct sections for instrument controls, serial communication, and data logs/plots.
@@ -144,8 +147,6 @@ The application offers a robust set of functionalities designed for efficient in
 ## Features To Be Added
 
 * **Multiple Instrument Functionality:** Support simultaneous data logging from multiple instruments, including both district models and multiple units of the same model.
-
-* **Data Export:** Add options to easily export received raw data and generated plot data to common formats like CSV, for further analysis.
 
 * **Advanced Plotting Features:**
 
