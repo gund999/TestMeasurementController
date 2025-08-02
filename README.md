@@ -16,30 +16,67 @@ The application offers a robust set of functionalities designed for efficient in
 
 * **Supported Instruments and Commands:**
 
-  #### HP 3478A Multimeter (In Progress)
+ ### HP 3478A Multimeter
 
-  * **HOME Command** (`H0`): Resets the multimeter to default settings.
+* **Preset Commands**
+    * **Home Command** (`H0`): Resets the multimeter to default settings.
+    * **Measure DC Voltage** (`H1`)
+    * **Measure AC Volts** (`H2`)
+    * **Measure 2-Wire Ohms** (`H3`)
+    * **Measure 4-Wire Ohms** (`H4`)
+    * **Measure DC Current** (`H5`)
+    * **Measure AC Current** (`H6`)
+    * **Measure Extended Ohms** (`H7`)
 
-  * **Measure DC Voltage** (`H1`)
+* **Measurement Function Commands**
+    * **DC Volts Function** (`F1`)
+    * **AC Volts Function** (`F2`)
+    * **2-Wire Ohms Function** (`F3`)
+    * **4-Wire Ohms Function** (`F4`)
+    * **DC Current Function** (`F5`)
+    * **AC Current Function** (`F6`)
+    * **Extended Ohms Function** (`F7`)
 
-  * **Measure AC Volts** (`H2`)
+* **Range Commands**
+    * **30mV DC Range** (`R-1`)
+    * **300mV/300mA Range** (`R-2`)
+    * **3V AC or DC/3A AC or DC Range** (`R0`)
+    * **30V AC or DC/30 ohm Range** (`R1`)
+    * **300V DC or AC/300 ohm Range** (`R2`)
+    * **3K ohm Range** (`R3`)
+    * **30K ohm Range** (`R4`)
+    * **300K ohm Range** (`R5`)
+    * **3M ohm Range** (`R6`)
+    * **30M ohm Range** (`R7`)
+    * **Autoranging** (`RA`)
 
-  * **Measure 2-Wire Ohms** (`H3`)
+* **Display Commands**
+    * **Return to Normal Display** (`D1`)
+    * **Write to Display** (`D2{text}`): Sends a custom text string to the display.
+    * **Write to Display (30ms)** (`D3{text}`): Sends a custom text string to the display for 30ms.
+    * **3 1/2 Digit Display** (`N3`)
+    * **4 1/2 Digit Display** (`N4`)
+    * **5 1/2 Digit Display** (`N5`)
 
-  * **Measure 4-Wire Ohms** (`H4`)
+* **Trigger Commands**
+    * **Internal Trigger** (`T1`)
+    * **External Trigger** (`T2`)
+    * **Single Trigger** (`T3`)
+    * **Trigger Hold** (`T4`)
+    * **Fast Trigger** (`T5`)
 
-  * **Measure DC Current** (`H5`)
+* **Autozero Commands**
+    * **Autozero off** (`Z0`)
+    * **Autozero on** (`Z1`)
 
-  * **Measure AC Current** (`H6`)
-
-  * **Measure Extended Ohms** (`H7`)
-
-  * **Clear Display** (`D1`): Clears the multimeter's display.
-
-  * **Write to Display** (`wrt 723 D2{text}`): Sends custom text to the multimeter's display.
-
-  * **Read IDN (WIP)**: Reads the instrument's identification string.
-  
+* **Other Commands**
+    * **Read Binary Status** (`B`)
+    * **Read Error Register** (`E`)
+    * **Clear Serial Poll Register** (`K`)
+    * **Set SRQ Mask** (`M{mask}`): Sets the SRQ mask using a 2-digit hex value.
+    * **Return Front/Rear Switch Position** (`S`)
+    * **Calibrate** (`C`)
+    
   #### Power Supply (WIP)
 
   * **Set Voltage**
@@ -88,15 +125,7 @@ The application offers a robust set of functionalities designed for efficient in
 
 * **Real-time Plotting (WIP):** Integrates the Matplotlib library to display live measurement data over time.
 
-* **Supported Plotting Modes (In Progress):** Automatically plots data received for key measurements from the **HP 3478A Multimeter**, including:
-
-  * "Measure DC Voltage"
-
-  * "Measure AC Volts"
-
-  * "Measure DC Current"
-
-  * "Measure AC Current"
+* **Supported Plotting Modes (In Progress):** Automatically plots data received for key measurements from the **HP 3478A Multimeter**.
 
 * **Dynamic Labels (In Progress):** The Y-axis label and plot title dynamically update to reflect the specific type of measurement being visualized.
 
@@ -108,13 +137,13 @@ The application offers a robust set of functionalities designed for efficient in
 
 * **Intuitive Layout:** The application features a well-organized and user-friendly interface with distinct sections for instrument controls, serial communication, and data logs/plots.
 
-* **Configuration Management (WIP):** "Save Config" and "Load Config" buttons are present, currently offering simulated functionality for future implementation.
+* **Configuration Management (WIP):** "Save Config" and "Load Config" buttons are present, allowing users to save and load instrument, subcommand, parameter, and serial settings to and from a JSON file.
+
+
 
 ## Features To Be Added
 
 * **Multiple Instrument Functionality:** Support simultaneous data logging from multiple instruments, including both district models and multiple units of the same model.
-
-* **Actual Configuration Saving/Loading:** Implement robust functionality to save and load instrument configurations and application settings to persistent files (e.g., JSON, YAML).
 
 * **Data Export:** Add options to easily export received raw data and generated plot data to common formats like CSV, for further analysis.
 

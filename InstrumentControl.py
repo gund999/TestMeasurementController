@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog
 from tkinter import font as tkFont
 from tkinter import messagebox
 import datetime
@@ -7,6 +7,8 @@ import time # For simulating delays
 import serial # Import the pyserial library
 import serial.tools.list_ports # To list available COM ports
 import threading # For running serial read in a separate thread
+import json # For saving and loading configuration
+import csv # To save data to a CSV file
 
 # Import matplotlib for plotting
 import matplotlib.pyplot as plt
@@ -14,17 +16,23 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 
 # Helper function to add placeholder text to ttk.Entry widgets
 def add_placeholder_to_entry(entry, placeholder_text):
+    """
+    Adds placeholder text functionality to a ttk.Entry widget.
+    The placeholder disappears on focus and reappears if the field is left empty.
+    """
     # Set initial text and style
     entry.delete(0, tk.END) # Clear existing text
     entry.insert(0, placeholder_text)
     entry.config(style='Placeholder.TEntry') # Apply placeholder style
 
     def on_focus_in(event):
+        """Removes the placeholder text when the entry widget is clicked."""
         if entry.get() == placeholder_text and entry.cget('style') == 'Placeholder.TEntry':
             entry.delete(0, tk.END)
             entry.config(style='TEntry') # Switch to default style for active text
 
     def on_focus_out(event):
+        """Adds the placeholder text back if the entry is left empty."""
         if not entry.get():
             entry.insert(0, placeholder_text)
             entry.config(style='Placeholder.TEntry') # Switch back to placeholder style
@@ -34,13 +42,17 @@ def add_placeholder_to_entry(entry, placeholder_text):
 
 # Helper function to add placeholder text to tk.Text widgets
 def add_placeholder_to_text(text_widget, placeholder_text):
+    """
+    Adds placeholder text functionality to a tk.Text widget.
+    The placeholder is grayed out and disappears on focus or key press.
+    """
     text_widget.tag_configure("placeholder", foreground="grey")
     # Store the placeholder text directly on the widget for easy access
     text_widget._placeholder_text = placeholder_text
     text_widget._has_placeholder = False # Internal state to track if placeholder is active
 
     def show_placeholder_internal():
-        # Only show placeholder if the widget is truly empty and doesn't already have one
+        """Displays the placeholder text if the widget is empty."""
         if not text_widget.get("1.0", tk.END).strip() and not text_widget._has_placeholder:
             text_widget.delete("1.0", tk.END) # Clear to ensure no stray characters
             text_widget.insert("1.0", text_widget._placeholder_text, "placeholder")
@@ -48,6 +60,7 @@ def add_placeholder_to_text(text_widget, placeholder_text):
             text_widget._has_placeholder = True
 
     def hide_placeholder_internal(event=None): # event=None for manual calls
+        """Hides the placeholder text."""
         if text_widget._has_placeholder:
             text_widget.delete("1.0", tk.END)
             text_widget.tag_remove("placeholder", "1.0", tk.END)
@@ -55,7 +68,7 @@ def add_placeholder_to_text(text_widget, placeholder_text):
             text_widget._has_placeholder = False
 
     def check_placeholder_internal(event):
-        # On focus out, if the widget is empty, re-show placeholder
+        """Checks on focus out if the placeholder should be shown again."""
         if not text_widget.get("1.0", tk.END).strip():
             show_placeholder_internal()
         else:
@@ -75,6 +88,10 @@ def add_placeholder_to_text(text_widget, placeholder_text):
 
 
 class GPIBApp:
+    """
+    Main application class for the GPIB Instrument Control GUI.
+    Handles all UI elements and communication logic.
+    """
     def __init__(self, master):
         self.master = master
         master.title("GPIB Instrument Control")
@@ -101,6 +118,7 @@ class GPIBApp:
         self.serial_port = None
         self.serial_read_thread = None
         self.stop_thread = threading.Event() # Event to signal the thread to stop
+        self._read_buffer = b'' # Buffer for handling partial serial messages
 
         # Autoscroll flags for log windows
         self.debug_autoscroll_enabled = True
@@ -114,37 +132,84 @@ class GPIBApp:
         self.instrument_data = {
             "Power Supply": {
                 "subcommands": {
-                    "Set Voltage": {"params": ["Voltage (V)", "Channel"]},
-                    "Set Current Limit": {"params": ["Current (A)", "Channel"]},
-                    "Output ON/OFF": {"params": ["State (ON/OFF)"]},
-                    "Measure Output": {"params": []}
+                    "Set Voltage": {"command": "VSET", "params": ["Voltage (V)", "Channel"]},
+                    "Set Current Limit": {"command": "CSET", "params": ["Current (A)", "Channel"]},
+                    "Output ON/OFF": {"command": "OUT", "params": ["State (ON/OFF)"]},
+                    "Measure Output": {"command": "MEAS", "params": []}
                 },
                 "command_prefix": "PS:"
             },
             "Chroma DC Load": {
                 "subcommands": {
-                    "Set Current": {"params": ["Current (A)", "Mode (CC/CR/CP)"]},
-                    "Set Voltage": {"params": ["Voltage (V)"]},
-                    "Load ON/OFF": {"params": ["State (ON/OFF)"]},
-                    "Measure Input": {"params": []}
+                    "Set Current": {"command": "CSET", "params": ["Current (A)", "Mode (CC/CR/CP)"]},
+                    "Set Voltage": {"command": "VSET", "params": ["Voltage (V)"]},
+                    "Load ON/OFF": {"command": "LOAD", "params": ["State (ON/OFF)"]},
+                    "Measure Input": {"command": "MEAS", "params": []}
                 },
                 "command_prefix": "LOAD:"
             },
             "HP 3478A Multimeter": {
                 "subcommands": {
-                    "HOME Command": {"params": []}, # Added HOME Command
-                    "Measure DC Voltage": {"params": []},
-                    "Measure AC Volts": {"params": []}, # Added AC Volts
-                    "Measure 2-Wire Ohms": {"params": []}, # Added 2-Wire Ohms
-                    "Measure 4-Wire Ohms": {"params": []}, # Added 4-Wire Ohms
-                    "Measure DC Current": {"params": []}, # Added DC Current
-                    "Measure AC Current": {"params": []}, # Added AC Current
-                    "Measure Extended Ohms": {"params": []}, # Added Extended Ohms
-                    "Clear Display": {"params": []}, # Added Clear Display
-                    "Write to Display": {"params": ["Enter text in all caps here"]}, # Specific placeholder
-                    "Read IDN": {"params": []}
+                    # Preset Commands
+                    "Preset: H0 - Home Command": {"command": "H0", "params": []},
+                    "Preset: H1 - Measure DC Volts": {"command": "H1", "params": []},
+                    "Preset: H2 - Measure AC Volts": {"command": "H2", "params": []},
+                    "Preset: H3 - Measure 2-Wire Ohms": {"command": "H3", "params": []},
+                    "Preset: H4 - Measure 4-Wire Ohms": {"command": "H4", "params": []},
+                    "Preset: H5 - Measure DC Current": {"command": "H5", "params": []},
+                    "Preset: H6 - Measure AC Current": {"command": "H6", "params": []},
+                    "Preset: H7 - Measure Extended Ohms": {"command": "H7", "params": []},
+                    
+                    # Measurement Function Commands
+                    "Measurement Function: F1 - DC Volts Function": {"command": "F1", "params": []},
+                    "Measurement Function: F2 - AC Volts Function": {"command": "F2", "params": []},
+                    "Measurement Function: F3 - 2-Wire Ohms Function": {"command": "F3", "params": []},
+                    "Measurement Function: F4 - 4-Wire Ohms Function": {"command": "F4", "params": []},
+                    "Measurement Function: F5 - DC Current Function": {"command": "F5", "params": []},
+                    "Measurement Function: F6 - AC Current Function": {"command": "F6", "params": []},
+                    "Measurement Function: F7 - Extended Ohms Function": {"command": "F7", "params": []},
+
+                    # Range Commands
+                    "Range: R-1 - 30mV DC Range": {"command": "R-1", "params": []},
+                    "Range: R-2 - 300mV/300mA Range": {"command": "R-2", "params": []},
+                    "Range: R0 - 3V AC or DC/3A AC or DC Range": {"command": "R0", "params": []},
+                    "Range: R1 - 30V AC or DC/30 ohm Range": {"command": "R1", "params": []},
+                    "Range: R2 - 300V DC or AC/300 ohm Range": {"command": "R2", "params": []},
+                    "Range: R3 - 3K ohm Range": {"command": "R3", "params": []},
+                    "Range: R4 - 30K ohm Range": {"command": "R4", "params": []},
+                    "Range: R5 - 300K ohm Range": {"command": "R5", "params": []},
+                    "Range: R6 - 3M ohm Range": {"command": "R6", "params": []},
+                    "Range: R7 - 30M ohm Range": {"command": "R7", "params": []},
+                    "Range: RA - Autoranging": {"command": "RA", "params": []},
+
+                    # Display Commands
+                    "Display: D1 - Return to Normal Display": {"command": "D1", "params": []},
+                    "Display: D2text - Write to Display": {"command": "D2", "params": ["Enter text (64 chars) here"]},
+                    "Display: D3text - Write to Display (30ms)": {"command": "D3", "params": ["Enter text (64 chars) here"]},
+                    "Display: N3 - 3 1/2 Digit Display": {"command": "N3", "params": []},
+                    "Display: N4 - 4 1/2 Digit Display": {"command": "N4", "params": []},
+                    "Display: N5 - 5 1/2 Digit Display": {"command": "N5", "params": []},
+                    
+                    # Trigger Commands
+                    "Trigger: T1 - Internal Trigger": {"command": "T1", "params": []},
+                    "Trigger: T2 - External Trigger": {"command": "T2", "params": []},
+                    "Trigger: T3 - Single Trigger": {"command": "T3", "params": []},
+                    "Trigger: T4 - Trigger Hold": {"command": "T4", "params": []},
+                    "Trigger: T5 - Fast Trigger": {"command": "T5", "params": []},
+
+                    # Autozero
+                    "Autozero: Z0 - Autozero off": {"command": "Z0", "params": []},
+                    "Autozero: Z1 - Autozero on": {"command": "Z1", "params": []},
+
+                    # Other Commands
+                    "Other: B - Read Binary Status": {"command": "B", "params": []},
+                    "Other: E - Read Error Register": {"command": "E", "params": []},
+                    "Other: K - Clear Serial Poll Register": {"command": "K", "params": []},
+                    "Other: Mx - Set SRQ Mask": {"command": "M", "params": ["SRQ Mask (2 hex digits)"]},
+                    "Other: S - Return Front/Rear Switch Position": {"command": "S", "params": []},
+                    "Other: C - Calibrate": {"command": "C", "params": []}
                 },
-                "command_prefix": "HP3478A:" # This prefix will be overridden by specific command logic for "Write to Display"
+                "command_prefix": "" # No global prefix for this instrument, commands are standalone
             }
         }
 
@@ -169,7 +234,7 @@ class GPIBApp:
         self.graph_frame.grid_columnconfigure(0, weight=1)
 
         self.graph_title_label = ttk.Label(self.graph_frame, text="Real-time Measurement Plot", font=tkFont.Font(family="Helvetica", size=12, weight="bold"))
-        self.graph_title_label.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky="n") # Adjust grid placement
+        self.graph_title_label.grid(row=0, column=0, columnspan=3, pady=(0, 5), sticky="n")
 
         # Matplotlib Figure and Axes
         self.fig, self.ax = plt.subplots(figsize=(5, 4), layout='constrained')
@@ -182,30 +247,33 @@ class GPIBApp:
         # Embed Matplotlib canvas in Tkinter
         self.canvas_plot = FigureCanvasTkAgg(self.fig, master=self.graph_frame)
         self.canvas_plot_widget = self.canvas_plot.get_tk_widget()
-        self.canvas_plot_widget.grid(row=0, column=0, columnspan=2, sticky="nsew", pady=(0, 10))
+        self.canvas_plot_widget.grid(row=0, column=0, columnspan=3, sticky="nsew", pady=(0, 10))
 
         # Matplotlib Navigation Toolbar
         self.toolbar = NavigationToolbar2Tk(self.canvas_plot, self.graph_frame, pack_toolbar=False)
         self.toolbar.update()
-        self.toolbar.grid(row=1, column=0, columnspan=2, sticky="ew")
+        self.toolbar.grid(row=1, column=0, columnspan=3, sticky="ew")
 
-        # X/Y Axis Buttons and Labels (moved to a separate frame for better layout)
-        self.axis_control_frame = ttk.Frame(self.graph_frame)
-        self.axis_control_frame.grid(row=2, column=0, columnspan=2, pady=(5,0))
+        # X/Y Axis and Save Data Controls (moved to a separate frame for better layout)
+        self.plot_control_frame = ttk.Frame(self.graph_frame)
+        self.plot_control_frame.grid(row=2, column=0, columnspan=3, pady=(5,0))
 
-        self.x_axis_button = ttk.Button(self.axis_control_frame, text="X-Axis", command=self._handle_x_axis)
+        self.x_axis_button = ttk.Button(self.plot_control_frame, text="X-Axis", command=self._handle_x_axis)
         self.x_axis_button.grid(row=0, column=0, padx=5)
-        self.x_units_label = ttk.Label(self.axis_control_frame, text="Time")
+        self.x_units_label = ttk.Label(self.plot_control_frame, text="Time (s)")
         self.x_units_label.grid(row=1, column=0)
 
-        self.y_axis_button = ttk.Button(self.axis_control_frame, text="Y-Axis", command=self._handle_y_axis)
+        self.y_axis_button = ttk.Button(self.plot_control_frame, text="Y-Axis", command=self._handle_y_axis)
         self.y_axis_button.grid(row=0, column=1, padx=5)
-        self.y_units_label = ttk.Label(self.axis_control_frame, text="Value") # Placeholder
+        self.y_units_label = ttk.Label(self.plot_control_frame, text="Value") # Placeholder
         self.y_units_label.grid(row=1, column=1)
 
-        self.clear_plot_button = ttk.Button(self.axis_control_frame, text="Clear Plot", command=self._clear_plot_data)
+        self.clear_plot_button = ttk.Button(self.plot_control_frame, text="Clear Plot", command=self._clear_plot_data)
         self.clear_plot_button.grid(row=0, column=2, padx=5)
-
+        
+        # New "Save Data" button
+        self.save_data_button = ttk.Button(self.plot_control_frame, text="Save Data", command=self._handle_save_data)
+        self.save_data_button.grid(row=0, column=3, padx=5)
 
         # Plotting data storage
         self.plot_time_data = []
@@ -283,7 +351,7 @@ class GPIBApp:
         self.selected_com_port = tk.StringVar(self.master)
         self.selected_com_port.set(self.available_ports[0] if self.available_ports else "")
         self.com_port_combobox = ttk.Combobox(serial_port_selection_frame, textvariable=self.selected_com_port,
-                                               values=self.available_ports, state="readonly")
+                                                values=self.available_ports, state="readonly")
         self.com_port_combobox.grid(row=1, column=0, sticky="ew", padx=(0, 5))
         self.com_port_combobox.bind("<<ComboboxSelected>>", self._add_debug_log_com_selection)
 
@@ -411,7 +479,7 @@ class GPIBApp:
         else:
             self.receive_autoscroll_enabled = False
 
-        self.receive_text.insert(tk.END, f"{timestamp}: {message}\n")
+        self.receive_text.insert(tk.END, f"{timestamp}: RX: {message}\n")
         if self.receive_autoscroll_enabled:
             self.receive_text.see(tk.END) # Auto-scroll to the end
 
@@ -435,16 +503,10 @@ class GPIBApp:
 
 
     def _update_gpib_connection_status(self, status):
-        """Updates the connection status light and label for GPIB (now unused)."""
-        # This method is kept for structural integrity but is no longer actively used for the main status
-        # self.connection_state = status # This state variable is now unused for the main status
-        # color_map = {
-        #     "disconnected": "red",
-        #     "connecting": "yellow",
-        #     "connected": "green"
-        # }
-        # self.connection_status_canvas.itemconfig(self.connection_status_light, fill=color_map.get(status, "gray"))
-        # self.connection_status_label.config(text=f"Connection Status: {status.upper()}")
+        """
+        Updates the connection status light and label for GPIB (now unused).
+        This method is kept for structural integrity but is no longer actively used for the main status.
+        """
         self._add_debug_log(f"GPIB Connection status (simulated) changed to: {status.upper()}")
 
     def _update_serial_connection_status(self, status):
@@ -506,8 +568,9 @@ class GPIBApp:
         self.plot_value_data = []
         self.start_time = time.time() # Reset start time for new plot
 
-    def _update_plot(self, timestamp_s, value):
+    def _update_plot(self, value):
         """Updates the plot with new data."""
+        timestamp_s = time.time()
         self.plot_time_data.append(timestamp_s - self.start_time) # Relative time
         self.plot_value_data.append(value)
 
@@ -534,6 +597,97 @@ class GPIBApp:
         self._add_debug_log("Clearing plot data.")
         self._initialize_plot() # Re-initialize the plot to clear it
         self.current_measurement_type = None # Reset measurement type
+    
+    def _handle_save_data(self):
+        """
+        Saves the plotted time and value data to a CSV file.
+        """
+        self._add_debug_log("Save Data button clicked.")
+
+        if not self.plot_time_data:
+            messagebox.showwarning("Warning", "No data to save. Please connect an instrument and start a measurement first.")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            title="Save Measurement Data"
+        )
+        
+        if not file_path:
+            self._add_debug_log("Save Data operation cancelled by user.")
+            return
+
+        try:
+            with open(file_path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['Timestamp (s)', 'Measurement Value']) # Write header row
+                for time_val, value_val in zip(self.plot_time_data, self.plot_value_data):
+                    writer.writerow([time_val, value_val])
+            
+            self._add_debug_log(f"Data successfully saved to: {file_path}")
+            messagebox.showinfo("Success", f"Measurement data saved successfully to {file_path}")
+
+        except Exception as e:
+            self._add_debug_log(f"Error saving data: {e}")
+            messagebox.showerror("Error", f"An error occurred while saving the data: {e}")
+
+    def _handle_x_axis(self):
+        """Allows the user to change the X-axis label."""
+        self._add_debug_log("X-Axis button clicked.")
+        # Create a new top-level window for the dialog
+        dialog = tk.Toplevel(self.master)
+        dialog.title("Change X-Axis Label")
+        dialog.geometry("300x100")
+        dialog.transient(self.master) # Set as a transient window
+        dialog.grab_set() # Make it modal
+
+        label = ttk.Label(dialog, text="Enter new X-axis label:")
+        label.pack(pady=5, padx=10)
+
+        entry = ttk.Entry(dialog)
+        entry.insert(0, self.x_units_label.cget("text"))
+        entry.pack(pady=5, padx=10, fill=tk.X)
+
+        def set_label():
+            new_label = entry.get()
+            self.x_units_label.config(text=new_label)
+            self.ax.set_xlabel(new_label)
+            self.canvas_plot.draw_idle()
+            self._add_debug_log(f"X-Axis label changed to: {new_label}")
+            dialog.destroy()
+        
+        button = ttk.Button(dialog, text="Set Label", command=set_label)
+        button.pack(pady=5)
+        entry.bind("<Return>", lambda e: set_label())
+
+    def _handle_y_axis(self):
+        """Allows the user to change the Y-axis label."""
+        self._add_debug_log("Y-Axis button clicked.")
+        dialog = tk.Toplevel(self.master)
+        dialog.title("Change Y-Axis Label")
+        dialog.geometry("300x100")
+        dialog.transient(self.master)
+        dialog.grab_set()
+
+        label = ttk.Label(dialog, text="Enter new Y-axis label:")
+        label.pack(pady=5, padx=10)
+
+        entry = ttk.Entry(dialog)
+        entry.insert(0, self.y_units_label.cget("text"))
+        entry.pack(pady=5, padx=10, fill=tk.X)
+
+        def set_label():
+            new_label = entry.get()
+            self.y_units_label.config(text=new_label)
+            self.ax.set_ylabel(new_label)
+            self.canvas_plot.draw_idle()
+            self._add_debug_log(f"Y-Axis label changed to: {new_label}")
+            dialog.destroy()
+        
+        button = ttk.Button(dialog, text="Set Label", command=set_label)
+        button.pack(pady=5)
+        entry.bind("<Return>", lambda e: set_label())
 
     # --- Event Handlers (Simulated Actions) ---
 
@@ -567,8 +721,15 @@ class GPIBApp:
 
         # Apply specific placeholders or generic ones
         for i, entry_widget in enumerate(self.param_entries):
-            placeholder = param_labels[i] if i < len(param_labels) else f"Sub Param {chr(65+i)}"
-            add_placeholder_to_entry(entry_widget, placeholder)
+            # First, clear the entry
+            entry_widget.delete(0, tk.END)
+            # Then set the placeholder or hide the entry
+            if i < len(param_labels):
+                placeholder = param_labels[i]
+                add_placeholder_to_entry(entry_widget, placeholder)
+                entry_widget.grid() # Make sure it's visible
+            else:
+                entry_widget.grid_remove() # Hide unused entry widgets
 
 
     def _handle_instrument_change(self, event):
@@ -590,312 +751,281 @@ class GPIBApp:
         self._add_debug_log(f"Subcommand selected: {selected_subcommand_name}")
         self._update_parameter_placeholders()
 
-
     def _handle_save_config(self):
+        """
+        Saves the current application state (instrument, subcommand, params, serial settings)
+        to a JSON file.
+        """
         self._add_debug_log("Save Config button clicked.")
-        messagebox.showinfo("Save Configuration", "Configuration saved (simulated).")
+        
+        config = {
+            "instrument": self.selected_instrument.get(),
+            "subcommand": self.selected_subcommand.get(),
+            "params": [e.get() for e in self.param_entries],
+            "com_port": self.selected_com_port.get(),
+            "baud_rate": self.baud_rate.get()
+        }
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        if file_path:
+            try:
+                with open(file_path, "w") as f:
+                    json.dump(config, f, indent=4)
+                self._add_debug_log(f"Configuration saved to: {file_path}")
+            except Exception as e:
+                self._add_debug_log(f"Error saving config: {e}")
+                messagebox.showerror("Error", f"Could not save configuration: {e}")
 
     def _handle_load_config(self):
+        """
+        Loads application state from a JSON file.
+        """
         self._add_debug_log("Load Config button clicked.")
-        messagebox.showinfo("Load Configuration", "Configuration loaded (simulated).")
-
-    def _handle_x_axis(self):
-        self._add_debug_log("X-Axis button clicked. (Simulated axis control)")
-        messagebox.showinfo("X-Axis Control", "X-Axis control panel would open here.")
-
-    def _handle_y_axis(self):
-        self._add_debug_log("Y-Axis button clicked. (Simulated axis control)")
-        messagebox.showinfo("Y-Axis Control", "Y-Axis control panel would open here.")
-
-    def _handle_send_command(self):
-        instrument = self.selected_instrument.get()
-        subcommand = self.selected_subcommand.get()
-        param_values_raw = [entry.get().strip() for entry in self.param_entries]
-
-        # Filter out placeholder text if it's still present
-        param_values = []
-        if instrument and subcommand and \
-           instrument in self.instrument_data and \
-           subcommand in self.instrument_data[instrument]["subcommands"]:
-            expected_params = self.instrument_data[instrument]["subcommands"][subcommand]["params"]
-            for i, val in enumerate(param_values_raw):
-                # Ensure we don't go out of bounds for expected_params
-                if i < len(expected_params) and val == expected_params[i]:
-                    param_values.append("") # It's still the placeholder, treat as empty
-                else:
-                    param_values.append(val)
-        else:
-            # If instrument or subcommand is not valid/selected, treat all params as raw
-            param_values = param_values_raw
-
-        if not instrument or instrument == "":
-            self._add_debug_log("Error: No Instrument selected. Cannot send command.")
-            messagebox.showerror("Error", "Please select an Instrument.")
-            return
-        if not subcommand or subcommand == "":
-            self._add_debug_log("Error: No subcommand selected. Cannot send command.")
-            messagebox.showerror("Error", "Please select a subcommand.")
-            return
-
-        # --- Command Construction Logic ---
-        final_command = ""
-        # Reset current measurement type for plotting
-        self.current_measurement_type = None
-
-        if instrument == "HP 3478A Multimeter":
-            if subcommand == "HOME Command":
-                final_command = "H0"
-            elif subcommand == "Measure DC Voltage":
-                final_command = "H1"
-                self.current_measurement_type = "DC Volts"
-            elif subcommand == "Measure AC Volts":
-                final_command = "H2"
-                self.current_measurement_type = "AC Volts"
-            elif subcommand == "Measure 2-Wire Ohms":
-                final_command = "H3"
-            elif subcommand == "Measure 4-Wire Ohms":
-                final_command = "H4"
-            elif subcommand == "Measure DC Current":
-                final_command = "H5"
-                self.current_measurement_type = "DC Current"
-            elif subcommand == "Measure AC Current":
-                final_command = "H6"
-                self.current_measurement_type = "AC Current"
-            elif subcommand == "Measure Extended Ohms":
-                final_command = "H7"
-            elif subcommand == "Clear Display":
-                final_command = "D1"
-            elif subcommand == "Write to Display":
-                text_to_display = param_values[0] if param_values else ""
-                if not text_to_display:
-                    self._add_debug_log("Error: Display text cannot be empty for 'Write to Display'. Sending aborted.")
-                    messagebox.showerror("Error", "Please enter text for the display.")
-                    return
-                final_command = f'wrt 723 D2{text_to_display}'
-        else:
-            # Generic command construction for other instruments/subcommands
-            instrument_prefix = self.instrument_data[instrument].get("command_prefix", "")
-            params_str = " ".join([p for p in param_values if p]) # Join only non-empty params
-            final_command = f"{instrument_prefix}{subcommand} {params_str}".strip()
-
-        self._add_debug_log(f"Final command to send: '{final_command}'")
-
-        # If a measurement command is sent, clear the plot before new data comes in
-        if self.current_measurement_type:
-            self._clear_plot_data()
-            self.ax.set_ylabel(f"Value ({self.current_measurement_type})") # Update Y-label
-            self.ax.set_title(f"Real-time {self.current_measurement_type} Measurement")
-            self.canvas_plot.draw_idle()
-
-
-        # --- Actual Serial Send ---
-        if self.serial_port and self.serial_port.is_open:
+        file_path = filedialog.askopenfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        if file_path:
             try:
-                # Encode the string to bytes before sending over serial
-                # Add a newline character commonly used for serial commands
-                command_bytes = (final_command + '\n').encode('ascii')
-                self.serial_port.write(command_bytes)
-                # Removed the "(Bytes: ...)" part from the debug log
-                self._add_debug_log(f"Sent command from 'Send Command' button: '{final_command}'")
-                # The _serial_reader_thread will now automatically pick up any response
-            except serial.SerialException as e:
-                self._add_debug_log(f"Error sending command from 'Send Command' button: {e}")
-                messagebox.showerror("Send Command Error", f"Error sending command via serial:\n{e}")
+                with open(file_path, "r") as f:
+                    config = json.load(f)
+
+                # Update UI elements from the loaded config
+                if "instrument" in config and config["instrument"] in self.instrument_data:
+                    self.selected_instrument.set(config["instrument"])
+                    self._handle_instrument_change(None) # Trigger update
+                
+                if "subcommand" in config:
+                    self.selected_subcommand.set(config["subcommand"])
+                    self._handle_subcommand_change(None) # Trigger update
+
+                if "params" in config and isinstance(config["params"], list):
+                    for i, param_val in enumerate(config["params"]):
+                        if i < len(self.param_entries):
+                            self.param_entries[i].delete(0, tk.END)
+                            # Remove placeholder style before inserting
+                            self.param_entries[i].config(style='TEntry')
+                            self.param_entries[i].insert(0, param_val)
+
+                if "com_port" in config and config["com_port"] in self.com_port_combobox['values']:
+                    self.selected_com_port.set(config["com_port"])
+                
+                if "baud_rate" in config:
+                    self.baud_rate.set(config["baud_rate"])
+
+                self._add_debug_log(f"Configuration loaded from: {file_path}")
+                messagebox.showinfo("Success", "Configuration loaded successfully!")
+
             except Exception as e:
-                self._add_debug_log(f"An unexpected error occurred while sending command from 'Send Command' button: {e}")
-                messagebox.showerror("Send Command Error", f"An unexpected error occurred:\n{e}")
-        else:
-            self._add_debug_log("Serial port is not connected. Cannot send command from 'Send Command' button.")
-            messagebox.showerror("Serial Connection Required", "Serial port is not connected. Please connect first using the 'Connect Serial' button.")
+                self._add_debug_log(f"Error loading config: {e}")
+                messagebox.showerror("Error", f"Could not load configuration. File format may be incorrect: {e}")
 
     def _handle_connect_serial(self):
-        """Attempts to connect to the selected serial port."""
+        """
+        Connects to the selected serial port.
+        Starts a separate thread to read incoming data.
+        """
+        if self.serial_connection_state == "connected":
+            self._add_debug_log("Already connected.")
+            messagebox.showinfo("Info", "Serial port is already connected.")
+            return
+
         port = self.selected_com_port.get()
         baud = self.baud_rate.get()
-
-        if not port or port == "No COM Ports Found":
-            self._add_debug_log("Error: No COM port selected or found.")
-            messagebox.showerror("Serial Connect Error", "Please select a valid COM port.")
+        if port == "No COM Ports Found" or not port:
+            messagebox.showwarning("Warning", "Please select a valid COM port.")
             return
 
         try:
-            baud_int = int(baud)
-            self._add_debug_log(f"Attempting to connect to serial port {port} at {baud_int} baud...")
-            self._update_serial_connection_status("connecting") # Update status to yellow
-            self.serial_port = serial.Serial(port, baud_int, timeout=0.1) # Non-blocking read timeout for thread
-            self._add_debug_log(f"Successfully connected to {port}")
-            messagebox.showinfo("Serial Connection", f"Connected to {port} at {baud_int} baud.")
-            self.connect_serial_button.config(state=tk.DISABLED)
-            self.disconnect_serial_button.config(state=tk.NORMAL)
-            self._update_serial_connection_status("connected") # Update status to green
-
-            # Start the serial reading thread
-            self.stop_thread.clear() # Ensure the stop event is clear
-            self.serial_read_thread = threading.Thread(target=self._serial_reader_thread, daemon=True)
-            self.serial_read_thread.start()
-
+            baud = int(baud)
         except ValueError:
-            self._add_debug_log(f"Error: Invalid baud rate '{baud}'. Must be an integer.")
-            messagebox.showerror("Serial Connect Error", "Invalid Baud Rate. Please enter a number.")
-            self._update_serial_connection_status("disconnected") # Back to red on error
+            messagebox.showerror("Error", "Baud rate must be an integer.")
+            return
+        
+        self._update_serial_connection_status("connecting")
+        try:
+            self.serial_port = serial.Serial(port, baud, timeout=1)
+            # Start the read thread only after a successful connection
+            self.stop_thread.clear()
+            self.serial_read_thread = threading.Thread(target=self._read_serial_data, daemon=True)
+            self.serial_read_thread.start()
+            self._update_serial_connection_status("connected")
         except serial.SerialException as e:
-            self._add_debug_log(f"Error connecting to serial port {port}: {e}")
-            messagebox.showerror("Serial Connect Error", f"Could not open serial port {port}:\n{e}")
-            self._update_serial_connection_status("disconnected") # Back to red on error
-        except Exception as e:
-            self._add_debug_log(f"An unexpected error occurred during serial connection: {e}")
-            messagebox.showerror("Serial Connect Error", f"An unexpected error occurred:\n{e}")
-            self._update_serial_connection_status("disconnected") # Back to red on error
+            self.serial_port = None
+            self._update_serial_connection_status("disconnected")
+            messagebox.showerror("Connection Error", f"Could not connect to {port}: {e}")
 
     def _handle_disconnect_serial(self):
-        """Closes the serial port if open and stops the reading thread."""
+        """
+        Disconnects from the serial port and stops the read thread.
+        """
+        if self.serial_connection_state != "connected":
+            self._add_debug_log("Not connected, cannot disconnect.")
+            return
+        
+        self._add_debug_log("Disconnecting from serial port...")
+        self.stop_thread.set() # Signal the thread to stop
+        if self.serial_port and self.serial_port.is_open:
+            self.serial_port.close()
+        self.serial_port = None
+        self._update_serial_connection_status("disconnected")
+        self._add_debug_log("Serial port disconnected.")
+        
+    def _read_serial_data(self):
+        """
+        Reads data from the serial port in a separate thread.
+        Updates the receive log and plot if data is a number.
+        This version is more robust against malformed data.
+        """
+        self._add_debug_log("Serial read thread started.")
+        self._read_buffer = b'' # Initialize buffer for this thread
+        while not self.stop_thread.is_set():
+            try:
+                if self.serial_port and self.serial_port.is_open:
+                    # Read a small chunk of data to avoid blocking
+                    data = self.serial_port.read(64) 
+                    if data:
+                        self._read_buffer += data
+                        while b'\n' in self._read_buffer:
+                            line, self._read_buffer = self._read_buffer.split(b'\n', 1)
+                            line_str = line.decode('utf-8', errors='ignore').strip()
+                            if line_str:
+                                self.master.after(0, self._add_receive_log, line_str)
+                                
+                                # Attempt to parse a numeric value for plotting
+                                try:
+                                    value = float(line_str)
+                                    self.master.after(0, self._update_plot, value)
+                                    # Check if a measurement type has been established for the y-axis label
+                                    if self.current_measurement_type is None:
+                                        self.master.after(0, lambda: self._add_debug_log("Plotting new data, Y-axis label is 'Value'"))
+                                        self.current_measurement_type = "Generic"
+
+                                except ValueError:
+                                    # The line doesn't contain a valid value for plotting, log it as a normal message
+                                    pass
+            except serial.SerialException as e:
+                self.master.after(0, self._add_debug_log, f"Serial read error: {e}")
+                self.master.after(0, self._handle_disconnect_serial)
+                break
+        self._add_debug_log("Serial read thread stopped.")
+
+
+    def _send_command_to_serial(self, command):
+        """Sends a string command to the serial port, with a newline."""
         if self.serial_port and self.serial_port.is_open:
             try:
-                # Signal the thread to stop
-                self.stop_thread.set()
-                # Wait for the thread to finish (with a timeout to prevent GUI freeze)
-                if self.serial_read_thread and self.serial_read_thread.is_alive():
-                    self.serial_read_thread.join(timeout=0.5) # Give it some time to exit
-                    if self.serial_read_thread.is_alive():
-                        self._add_debug_log("Warning: Serial read thread did not terminate gracefully.")
-
-                self.serial_port.close()
-                self._add_debug_log(f"Disconnected from serial port {self.serial_port.port}")
-                messagebox.showinfo("Serial Disconnection", "Serial port disconnected.")
-                self.connect_serial_button.config(state=tk.NORMAL)
-                self.disconnect_serial_button.config(state=tk.DISABLED)
-                self.serial_port = None # Clear the serial port object
-                self._update_serial_connection_status("disconnected") # Update status to red
-            except Exception as e:
-                self._add_debug_log(f"Error disconnecting serial port: {e}")
-                messagebox.showerror("Serial Disconnect Error", f"Error disconnecting serial port:\n{e}")
-                self._update_serial_connection_status("disconnected") # Ensure red on error
-        else:
-            self._add_debug_log("Serial port is not open to disconnect.")
-            messagebox.showwarning("Serial Disconnection", "Serial port is not currently connected.")
-            self._update_serial_connection_status("disconnected") # Ensure red if already disconnected
-
-    def _serial_reader_thread(self):
-        """Function to run in a separate thread to read serial data."""
-        self._add_debug_log("Serial reader thread started.")
-        self.serial_receive_buffer = bytearray() # Initialize buffer for this thread run
-
-        while not self.stop_thread.is_set() and self.serial_port and self.serial_port.is_open:
-            try:
-                # Read all available bytes from the serial buffer
-                # The timeout on serial.Serial ensures read_all() doesn't block indefinitely
-                data = self.serial_port.read_all()
-                if data:
-                    self.serial_receive_buffer.extend(data) # Add new data to buffer
-
-                # Process buffer line by line
-                # Look for newline character (b'\n') as a delimiter
-                while b'\n' in self.serial_receive_buffer:
-                    # Find the index of the first newline
-                    newline_index = self.serial_receive_buffer.find(b'\n')
-                    # Extract the complete line (including newline)
-                    line_bytes = self.serial_receive_buffer[:newline_index + 1]
-                    # Remove the processed line from the buffer
-                    self.serial_receive_buffer = self.serial_receive_buffer[newline_index + 1:]
-
-                    try:
-                        # Decode and strip whitespace (including the newline and carriage return)
-                        decoded_line = line_bytes.decode('ascii').strip()
-                        self._add_receive_log(f"Serial RX: {decoded_line}")
-
-                        # Attempt to parse received data as a float for plotting
-                        if self.current_measurement_type:
-                            try:
-                                value = float(decoded_line)
-                                current_time = time.time()
-                                # Schedule plot update on the main Tkinter thread
-                                self.master.after(0, self._update_plot, current_time, value)
-                            except ValueError:
-                                self._add_debug_log(f"Could not convert received data '{decoded_line}' to float for plotting.")
-
-                    except UnicodeDecodeError:
-                        self._add_debug_log(f"Serial RX (decode error, raw bytes): {line_bytes.hex()}")
-                
-                # Optional: Implement a buffer size limit to prevent excessive memory usage
-                # if len(self.serial_receive_buffer) > 1024: # Example limit
-                #     self._add_debug_log("Warning: Serial receive buffer exceeding limit, clearing.")
-                #     self.serial_receive_buffer.clear()
-
-
-                time.sleep(0.01) # Small delay to prevent busy-waiting
-
+                # Add a newline character to the command
+                command_with_newline = command + '\n'
+                self.serial_port.write(command_with_newline.encode('utf-8'))
+                self._add_debug_log(f"TX: {command}")
+                return True
             except serial.SerialException as e:
-                self._add_debug_log(f"Serial read error: {e}")
-                self.master.after(0, self._handle_disconnect_serial) # Attempt to disconnect on error
-                break # Exit thread loop on error
-            except Exception as e:
-                self._add_debug_log(f"Unexpected error in serial reader thread: {e}")
-                break # Exit thread loop on unexpected error
-        self._add_debug_log("Serial reader thread stopped.")
+                self._add_debug_log(f"Error sending command: {e}")
+                messagebox.showerror("Serial Error", f"Error sending command: {e}")
+                return False
+        else:
+            self._add_debug_log("Serial port is not connected.")
+            messagebox.showwarning("Warning", "Serial port is not connected.")
+            return False
 
-    def _handle_send_serial_command(self):
-        """Handles sending text from the serial command input bar."""
-        # Get text from the Text widget, from start (1.0) to end-1c (end minus one character, to exclude newline)
-        serial_command = self.serial_entry.get("1.0", tk.END).strip()
+    def _handle_send_command(self):
+        """
+        Constructs a command from the UI and sends it via the serial port.
+        """
+        selected_instrument_name = self.selected_instrument.get()
+        selected_subcommand_name = self.selected_subcommand.get()
 
-        # Clear the entry field after sending
-        self.serial_entry.delete("1.0", tk.END)
-        # Re-apply placeholder if the field is empty
-        # Call the stored internal function to ensure proper placeholder re-display
-        self._serial_entry_show_placeholder()
-
-        if not serial_command or serial_command == self.serial_entry._placeholder_text: # Check against actual placeholder text
-            self._add_debug_log("No serial command entered.")
-            messagebox.showwarning("Warning", "Please enter a command to send via serial.")
+        if not selected_instrument_name or not selected_subcommand_name:
+            messagebox.showwarning("Warning", "Please select an instrument and a subcommand.")
+            self._add_debug_log("Attempt to send command failed: instrument or subcommand not selected.")
             return
 
-        if self.serial_port and self.serial_port.is_open:
-            try:
-                # Encode the string to bytes before sending over serial
-                # Add a newline character commonly used for serial commands
-                command_bytes = (serial_command + '\n').encode('ascii')
-                self.serial_port.write(command_bytes)
-                # Removed the "(Bytes: ...)" part from the debug log
-                self._add_debug_log(f"Sent serial command: '{serial_command}'")
-
-                # The _serial_reader_thread will now automatically pick up any response
-            except serial.SerialException as e:
-                self._add_debug_log(f"Error sending serial command: {e}")
-                messagebox.showerror("Serial Send Error", f"Error sending command:\n{e}")
-            except Exception as e:
-                self._add_debug_log(f"An unexpected error occurred while sending serial command: {e}")
-                messagebox.showerror("Serial Send Error", f"An unexpected error occurred:\n{e}")
+        # Get the command string from the data structure
+        subcommand_info = self.instrument_data[selected_instrument_name]["subcommands"][selected_subcommand_name]
+        command_base = subcommand_info["command"]
+        
+        # Get parameter values from the entry fields
+        param_values = [e.get() for e in self.param_entries if e.winfo_ismapped()]
+        
+        # Build the final command string
+        if selected_instrument_name == "Power Supply" or selected_instrument_name == "Chroma DC Load":
+            command_prefix = self.instrument_data[selected_instrument_name]["command_prefix"]
+            # Filter out placeholders
+            params_str = ",".join([p for p in param_values if p != subcommand_info["params"][param_values.index(p)]])
+            command = f"{command_prefix}{command_base}"
+            if params_str:
+                command += f":{params_str}"
+        
+        elif selected_instrument_name == "HP 3478A Multimeter":
+            if command_base == "D2":
+                # Special handling for D2text command
+                text_to_write = param_values[0] if param_values and param_values[0] != subcommand_info["params"][0] else ""
+                command = f"{command_base}{text_to_write.upper()}"
+            elif command_base == "D3":
+                # Special handling for D3text command
+                text_to_write = param_values[0] if param_values and param_values[0] != subcommand_info["params"][0] else ""
+                command = f"{command_base}{text_to_write.upper()}"
+            elif command_base == "M":
+                # Special handling for Mx command
+                mask_value = param_values[0] if param_values and param_values[0] != subcommand_info["params"][0] else ""
+                command = f"{command_base}{mask_value}"
+            else:
+                # Other HP commands are simple strings without prefixes or parameters
+                command = command_base
+        
         else:
-            self._add_debug_log("Serial port is not connected. Cannot send command.")
-            messagebox.showerror("Serial Send Error", "Serial port is not connected. Please connect first.")
+            # Fallback for other instruments
+            command = command_base + (":" + ",".join(param_values) if param_values else "")
+
+        self._send_command_to_serial(command)
+
 
     def _handle_send_serial_on_enter(self, event):
-        """Event handler for pressing Enter in the serial entry field."""
-        self._handle_send_serial_command()
-        return "break" # Prevents the default Tkinter newline insertion
+        """Handles sending the raw serial command on Enter key press."""
+        # Check for Shift-Enter to allow newlines
+        if event.state & 0x0001: # Check for Shift key
+            return self._handle_newline_on_shift_enter(event)
+            
+        command = self.serial_entry.get("1.0", "end-1c").strip()
+        if command and not self.serial_entry._has_placeholder:
+            self._send_command_to_serial(command)
+        
+        # Clear the entry and reset placeholder, and prevent a newline from being inserted
+        self.serial_entry.delete("1.0", tk.END)
+        self._serial_entry_show_placeholder()
+        return "break" # Prevents default Enter key behavior (newline insertion)
 
     def _handle_newline_on_shift_enter(self, event):
-        """Event handler for pressing Shift+Enter in the serial entry field."""
-        # Insert a newline character at the current cursor position
-        self.serial_entry.insert(tk.INSERT, "\n")
-        # Ensure the cursor stays at the end of the newly inserted newline
-        self.serial_entry.see(tk.INSERT)
-        return "break" # Prevents the default Tkinter newline insertion
+        """Allows a newline to be inserted when Shift+Enter is pressed."""
+        self.serial_entry.insert(tk.END, "\n")
+        return "break" # Prevents default Shift-Enter behavior
+
+    def _handle_send_serial_command(self):
+        """Sends the raw serial command from the text box on button click."""
+        command = self.serial_entry.get("1.0", "end-1c").strip()
+        if command and not self.serial_entry._has_placeholder:
+            self._send_command_to_serial(command)
+
+        # Clear the entry and reset placeholder
+        self.serial_entry.delete("1.0", tk.END)
+        self._serial_entry_show_placeholder()
 
     def _on_closing(self):
-        """Handles proper shutdown when the Tkinter window is closed."""
-        self._add_debug_log("Application closing. Attempting to disconnect serial port...")
-        self._handle_disconnect_serial() # Disconnect serial and stop thread
-        self.master.destroy() # Destroy the Tkinter window
+        """
+        Gracefully handles application closure.
+        Stops the serial read thread and closes the serial port.
+        """
+        self._add_debug_log("Application closing. Stopping serial thread...")
+        self.stop_thread.set()
+        if self.serial_port and self.serial_port.is_open:
+            self.serial_port.close()
+        self.master.destroy()
 
-
-# Running the application
 if __name__ == "__main__":
     root = tk.Tk()
     app = GPIBApp(root)
-
-    # Apply initial placeholders for parameter entries
-    app._update_parameter_placeholders() # Call this after app is initialized
-    app._initialize_plot() # Initialize the plot when the app starts
-
     root.mainloop()
