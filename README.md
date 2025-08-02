@@ -76,7 +76,7 @@ The application offers a robust set of functionalities designed for efficient in
     * **Set SRQ Mask** (`M{mask}`): Sets the SRQ mask using a 2-digit hex value.
     * **Return Front/Rear Switch Position** (`S`)
     * **Calibrate** (`C`)
-    
+
   #### Power Supply (WIP)
 
   * **Set Voltage**
@@ -158,10 +158,7 @@ The application offers a robust set of functionalities designed for efficient in
 
 * **Input Validation:** Implement more robust validation for all user inputs, ensuring data integrity and preventing common errors (e.g., ensuring numeric values where expected).
 
-* **Automated Measurement Sequences:** Develop a powerful feature to define, save, and execute automated sequences of commands and measurements, ideal for repetitive testing.
 
 * **Error Handling Improvements:** Expand error reporting with more specific details and more robustness to the addition of other instruments and subcommands.
-
-* **GPIB Integration:** Explore and integrate actual GPIB communication capabilities alongside the existing serial interface, if a physical GPIB hardware is available.
 
 * **User Preferences (WIP):** Allow users to save and load application preferences such as data logging settings, display settings, and default COM port settings.

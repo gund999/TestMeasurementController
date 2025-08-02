@@ -184,7 +184,7 @@ class GPIBApp:
 
                     # Display Commands
                     "Display: D1 - Return to Normal Display": {"command": "D1", "params": []},
-                    "Display: D2text - Write to Display": {"command": "D2", "params": ["Enter text (64 chars) here"]},
+                    "Display: D2text - Write to Display": {"command": "D2", "params": ["Enter text (64 chars) here, will autocap"]},
                     "Display: D3text - Write to Display (30ms)": {"command": "D3", "params": ["Enter text (64 chars) here"]},
                     "Display: N3 - 3 1/2 Digit Display": {"command": "N3", "params": []},
                     "Display: N4 - 4 1/2 Digit Display": {"command": "N4", "params": []},
